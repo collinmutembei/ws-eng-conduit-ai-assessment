@@ -175,16 +175,11 @@ export class ArticleService {
     this.ensureCanEditArticle(userId, article);
     this.ensureUserHoldsValidLock(userId, article);
 
-    const updateData: Partial<Article> = {
-      title: articleData.title,
-      description: articleData.description,
-      body: articleData.body,
-      tagList: articleData.tagList,
-    };
+    const { coAuthors, ...updateData } = articleData;
     wrap(article).assign(updateData);
 
-    if (articleData.coAuthors !== undefined) {
-      article.coAuthors.set(await this.resolveCoAuthors(articleData.coAuthors, article.author.id));
+    if (coAuthors !== undefined) {
+      article.coAuthors.set(await this.resolveCoAuthors(coAuthors, article.author.id));
     }
 
     await this.em.flush();

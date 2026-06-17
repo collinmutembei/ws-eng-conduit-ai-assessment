@@ -2,7 +2,6 @@ import {
   ArrayType,
   Collection,
   Entity,
-  EntityDTO,
   ManyToMany,
   ManyToOne,
   OneToMany,
@@ -12,6 +11,7 @@ import {
 } from '@mikro-orm/core';
 import slug from 'slug';
 
+import { IProfileData } from '../profile/profile.interface';
 import { User } from '../user/user.entity';
 import { Comment } from './comment.entity';
 
@@ -74,11 +74,21 @@ export class Article {
     const o = wrap<Article>(this).toObject() as ArticleDTO;
     o.favorited = user && user.favorites.isInitialized() ? user.favorites.contains(this) : false;
     o.author = this.author.toJSON(user);
+    o.coAuthors = this.coAuthors.getItems().map((coAuthor) => coAuthor.toJSON(user));
+    o.lockedBy = this.lockedBy ? this.lockedBy.toJSON(user) : null;
+    o.lockedAt = this.lockedAt?.toISOString() ?? null;
+    o.lastPingAt = this.lastPingAt?.toISOString() ?? null;
 
     return o;
   }
 }
 
-export interface ArticleDTO extends EntityDTO<Article> {
+export interface ArticleDTO {
+  [key: string]: unknown;
   favorited?: boolean;
+  author?: IProfileData;
+  coAuthors?: IProfileData[];
+  lockedBy?: IProfileData | null;
+  lockedAt?: string | null;
+  lastPingAt?: string | null;
 }
