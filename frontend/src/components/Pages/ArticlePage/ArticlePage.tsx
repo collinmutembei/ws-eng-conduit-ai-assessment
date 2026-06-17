@@ -14,7 +14,7 @@ import {
 } from '../../../services/conduit';
 import { store } from '../../../state/store';
 import { useStore } from '../../../state/storeHooks';
-import { Article } from '../../../types/article';
+import { Article, canEditArticle } from '../../../types/article';
 import { Comment } from '../../../types/comment';
 import { redirect } from '../../../types/location';
 import { classObjectToClassName } from '../../../types/style';
@@ -112,7 +112,7 @@ function ArticleMeta({
     <div className='article-meta'>
       <ArticleAuthorInfo article={article} />
 
-      {user && user.username === article.author.username ? (
+      {canEditArticle(article, user) ? (
         <OwnerArticleMetaActions article={article} deletingArticle={deletingArticle} />
       ) : (
         <NonOwnerArticleMetaActions
