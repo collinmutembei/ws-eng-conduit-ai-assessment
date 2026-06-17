@@ -30,8 +30,11 @@ export function ArticleEditor({ onSubmit }: { onSubmit: (ev: React.FormEvent) =>
   }, []);
 
   const selectableCoAuthors = useMemo(
-    () => availableUsers.filter((user) => user.username !== currentUser?.username),
-    [availableUsers, currentUser?.username],
+    () =>
+      availableUsers.filter(
+        (user) => user.username !== currentUser?.username || article.coAuthors.includes(user.username),
+      ),
+    [article.coAuthors, availableUsers, currentUser?.username],
   );
 
   return (

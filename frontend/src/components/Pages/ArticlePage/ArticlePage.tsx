@@ -108,12 +108,15 @@ function ArticleMeta({
   metaSection: MetaSectionState;
   user: User | null;
 }) {
+  const isOwner = user?.username === article.author.username;
+  const isCoAuthor = !!user && article.coAuthors.includes(user.username);
+
   return (
     <div className='article-meta'>
       <ArticleAuthorInfo article={article} />
 
-      {user && user.username === article.author.username ? (
-        <OwnerArticleMetaActions article={article} deletingArticle={deletingArticle} />
+      {isOwner || isCoAuthor ? (
+        <OwnerArticleMetaActions article={article} deletingArticle={deletingArticle} canDelete={isOwner} />
       ) : (
         <NonOwnerArticleMetaActions
           article={article}
@@ -223,9 +226,11 @@ async function onFavorite(slug: string, favorited: boolean) {
 function OwnerArticleMetaActions({
   article: { slug },
   deletingArticle,
+  canDelete,
 }: {
   article: Article;
   deletingArticle: boolean;
+  canDelete: boolean;
 }) {
   return (
     <Fragment>
@@ -233,15 +238,19 @@ function OwnerArticleMetaActions({
         <i className='ion-plus-round'></i>
         &nbsp; Edit Article
       </button>
-      &nbsp;
-      <button
-        className='btn btn-outline-danger btn-sm'
-        disabled={deletingArticle}
-        onClick={() => onDeleteArticle(slug)}
-      >
-        <i className='ion-heart'></i>
-        &nbsp; Delete Article
-      </button>
+      {canDelete && (
+        <Fragment>
+          &nbsp;
+          <button
+            className='btn btn-outline-danger btn-sm'
+            disabled={deletingArticle}
+            onClick={() => onDeleteArticle(slug)}
+          >
+            <i className='ion-heart'></i>
+            &nbsp; Delete Article
+          </button>
+        </Fragment>
+      )}
     </Fragment>
   );
 }
