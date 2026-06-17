@@ -9,6 +9,10 @@ export interface EditorState {
   submitting: boolean;
   errors: GenericErrors;
   loading: boolean;
+  lockAcquiring: boolean;
+  lockConflict: boolean;
+  pingFailures: number;
+  lockMessage: string | null;
 }
 
 const initialState: EditorState = {
@@ -17,6 +21,10 @@ const initialState: EditorState = {
   submitting: false,
   errors: {},
   loading: true,
+  lockAcquiring: false,
+  lockConflict: false,
+  pingFailures: 0,
+  lockMessage: null,
 };
 
 const slice = createSlice({
@@ -24,6 +32,33 @@ const slice = createSlice({
   initialState,
   reducers: {
     initializeEditor: () => initialState,
+    startLockAcquisition: (state) => {
+      state.lockAcquiring = true;
+      state.lockConflict = false;
+      state.lockMessage = null;
+      state.pingFailures = 0;
+    },
+    lockAcquired: (state) => {
+      state.lockAcquiring = false;
+      state.lockConflict = false;
+      state.lockMessage = null;
+      state.pingFailures = 0;
+    },
+    lockLost: (state, { payload: message }: PayloadAction<string>) => {
+      state.lockAcquiring = false;
+      state.lockConflict = true;
+      state.lockMessage = message;
+      state.submitting = false;
+    },
+    registerPingFailure: (state) => {
+      state.pingFailures += 1;
+    },
+    resetPingFailures: (state) => {
+      state.pingFailures = 0;
+    },
+    stopSubmitting: (state) => {
+      state.submitting = false;
+    },
     updateField: (
       state,
       { payload: { name, value } }: PayloadAction<{ name: keyof EditorState['article'] | 'tag'; value: string }>,
@@ -59,11 +94,30 @@ const slice = createSlice({
     loadArticle: (state, { payload: article }: PayloadAction<ArticleForEditor>) => {
       state.article = article;
       state.loading = false;
+      state.errors = {};
+      state.submitting = false;
+      state.lockConflict = false;
+      state.lockMessage = null;
+      state.pingFailures = 0;
     },
   },
 });
 
-export const { initializeEditor, updateField, setCoAuthors, startSubmitting, addTag, removeTag, updateErrors, loadArticle } =
-  slice.actions;
+export const {
+  initializeEditor,
+  startLockAcquisition,
+  lockAcquired,
+  lockLost,
+  registerPingFailure,
+  resetPingFailures,
+  stopSubmitting,
+  updateField,
+  setCoAuthors,
+  startSubmitting,
+  addTag,
+  removeTag,
+  updateErrors,
+  loadArticle,
+} = slice.actions;
 
 export default slice.reducer;

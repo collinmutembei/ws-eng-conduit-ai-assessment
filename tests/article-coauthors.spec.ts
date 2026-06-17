@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
 
 const ZOLLY = {
   email: 'zgorey2@livejournal.com',
@@ -59,7 +59,42 @@ test.describe.serial('advanced co-authors basic acceptance', () => {
 
     await page.screenshot({ path: 'submission/test2.png' });
   });
+
+  test('Test 3: Zolly sees a warning when John already holds the article edit lock', async ({ browser }) => {
+    expect(sharedArticlePath).not.toBe('');
+
+    const johnContext = await newIsolatedContext(browser);
+    const zollyContext = await newIsolatedContext(browser);
+    const johnPage = await johnContext.newPage();
+    const zollyPage = await zollyContext.newPage();
+
+    try {
+      await login(johnPage, JOHN.email, JOHN.password);
+      await johnPage.goto(sharedArticlePath);
+      await johnPage.getByRole('button', { name: /Edit Article/ }).first().click();
+      await expect(johnPage.getByPlaceholder('Article Title')).toHaveValue(sharedArticleTitle);
+      await johnPage.screenshot({ path: 'submission/test3a.png' });
+
+      await login(zollyPage, ZOLLY.email, ZOLLY.password);
+      await zollyPage.goto(sharedArticlePath);
+      await zollyPage.getByRole('button', { name: /Edit Article/ }).first().click();
+
+      const warningBanner = zollyPage.getByRole('alert');
+      await expect(warningBanner).toContainText('This article is currently locked for editing by another user.');
+      await expect(zollyPage.getByPlaceholder('Article Title')).toBeDisabled();
+
+      await zollyPage.screenshot({ path: 'submission/test3b.png' });
+      await zollyPage.screenshot({ path: 'submission/test3.png' });
+    } finally {
+      await johnContext.close();
+      await zollyContext.close();
+    }
+  });
 });
+
+async function newIsolatedContext(browser: Browser): Promise<BrowserContext> {
+  return browser.newContext({ viewport: { width: 1280, height: 720 } });
+}
 
 async function login(page: Page, email: string, password: string) {
   await page.goto('/#/login');

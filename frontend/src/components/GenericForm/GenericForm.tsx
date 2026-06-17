@@ -33,7 +33,7 @@ export const GenericForm: FC<GenericFormProps> = ({
     <Errors errors={errors} />
 
     <form onSubmit={onSubmit}>
-      <fieldset>
+      <fieldset disabled={disabled}>
         {fields.map((field) =>
           field.fieldType === 'input' ? (
             <FormGroup
@@ -72,7 +72,9 @@ export const GenericForm: FC<GenericFormProps> = ({
           ),
         )}
         {children}
-        <button className='btn btn-lg btn-primary pull-xs-right'>{submitButtonText}</button>
+        <button className='btn btn-lg btn-primary pull-xs-right' disabled={disabled}>
+          {submitButtonText}
+        </button>
       </fieldset>
     </form>
   </Fragment>

@@ -112,6 +112,36 @@ export async function updateArticle(slug: string, article: ArticleForEditor): Pr
   }
 }
 
+export async function acquireArticleLock(slug: string): Promise<Result<Article, GenericErrors>> {
+  try {
+    const { data } = await axios.post(`articles/${slug}/lock`);
+    return Ok(object({ article: articleDecoder }).verify(data).article);
+  } catch (error) {
+    const axiosError = error as AxiosError;
+    return Err(object({ errors: genericErrorsDecoder }).verify(axiosError.response?.data).errors);
+  }
+}
+
+export async function pingArticleLock(slug: string): Promise<Result<Article, GenericErrors>> {
+  try {
+    const { data } = await axios.post(`articles/${slug}/ping`);
+    return Ok(object({ article: articleDecoder }).verify(data).article);
+  } catch (error) {
+    const axiosError = error as AxiosError;
+    return Err(object({ errors: genericErrorsDecoder }).verify(axiosError.response?.data).errors);
+  }
+}
+
+export async function releaseArticleLock(slug: string): Promise<Result<Article, GenericErrors>> {
+  try {
+    const { data } = await axios.delete(`articles/${slug}/lock`);
+    return Ok(object({ article: articleDecoder }).verify(data).article);
+  } catch (error) {
+    const axiosError = error as AxiosError;
+    return Err(object({ errors: genericErrorsDecoder }).verify(axiosError.response?.data).errors);
+  }
+}
+
 export async function getProfile(username: string): Promise<Profile> {
   const { data } = await axios.get(`profiles/${username}`);
   return object({ profile: profileDecoder }).verify(data).profile;

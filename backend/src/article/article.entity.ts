@@ -53,6 +53,15 @@ export class Article {
   })
   coAuthors = new Collection<User>(this);
 
+  @ManyToOne(() => User, { nullable: true, fieldName: 'locked_by_id' })
+  lockedBy?: User | null = null;
+
+  @Property({ type: 'date', nullable: true, fieldName: 'locked_at' })
+  lockedAt?: Date | null = null;
+
+  @Property({ type: 'date', nullable: true, fieldName: 'last_ping_at' })
+  lastPingAt?: Date | null = null;
+
   @OneToMany(() => Comment, (comment) => comment.article, { eager: true, orphanRemoval: true })
   comments = new Collection<Comment>(this);
 
@@ -68,18 +77,30 @@ export class Article {
   }
 
   toJSON(user?: User) {
-    const o = wrap<Article>(this).toObject() as unknown as ArticleDTO;
-    o.favorited = user && user.favorites.isInitialized() ? user.favorites.contains(this) : false;
-    o.author = this.author.toJSON(user);
-    o.coAuthors = this.coAuthors.isInitialized()
+    const article = {
+      ...(wrap<Article>(this).toObject() as EntityDTO<Article>),
+    } as EntityDTO<Article> & {
+      lockedBy?: EntityDTO<User> | null;
+      lockedAt?: Date | null;
+      lastPingAt?: Date | null;
+    };
+
+    delete article.lockedBy;
+    delete article.lockedAt;
+    delete article.lastPingAt;
+
+    const result = article as unknown as ArticleDTO;
+    result.favorited = user && user.favorites.isInitialized() ? user.favorites.contains(this) : false;
+    result.author = this.author.toJSON(user);
+    result.coAuthors = this.coAuthors.isInitialized()
       ? this.coAuthors.getItems().map((coAuthor) => coAuthor.username)
       : [];
 
-    return o;
+    return result;
   }
 }
 
-export interface ArticleDTO extends Omit<EntityDTO<Article>, 'coAuthors'> {
+export interface ArticleDTO extends Omit<EntityDTO<Article>, 'coAuthors' | 'lockedBy' | 'lockedAt' | 'lastPingAt'> {
   favorited?: boolean;
   coAuthors?: string[];
 }

@@ -9,9 +9,12 @@ import { GenericForm } from '../GenericForm/GenericForm';
 import { addTag, EditorState, removeTag, setCoAuthors, updateField } from './ArticleEditor.slice';
 
 export function ArticleEditor({ onSubmit }: { onSubmit: (ev: React.FormEvent) => void }) {
-  const { article, submitting, tag, errors } = useStore(({ editor }) => editor);
+  const { article, submitting, tag, errors, lockAcquiring, lockConflict, lockMessage } = useStore(
+    ({ editor }) => editor,
+  );
   const currentUser = useStore(({ app }) => app.user);
   const [availableUsers, setAvailableUsers] = useState<PublicUserOption[]>([]);
+  const formDisabled = submitting || lockAcquiring || lockConflict;
 
   useEffect(() => {
     let isMounted = true;
@@ -41,9 +44,14 @@ export function ArticleEditor({ onSubmit }: { onSubmit: (ev: React.FormEvent) =>
     <div className='editor-page'>
       <ContainerPage>
         <div className='col-md-10 offset-md-1 col-xs-12'>
+          {lockConflict && lockMessage ? (
+            <div className='alert alert-warning' role='alert'>
+              {lockMessage}
+            </div>
+          ) : null}
           <GenericForm
             formObject={{ ...article, tag } as unknown as Record<string, string | null>}
-            disabled={submitting}
+            disabled={formDisabled}
             errors={errors}
             onChange={onUpdateField}
             onSubmit={onSubmit}
@@ -77,7 +85,7 @@ export function ArticleEditor({ onSubmit }: { onSubmit: (ev: React.FormEvent) =>
                 id='coAuthors'
                 className='form-control'
                 multiple
-                disabled={submitting}
+                disabled={formDisabled}
                 value={article.coAuthors}
                 onChange={onUpdateCoAuthors}
                 size={Math.max(4, Math.min(8, selectableCoAuthors.length || 4))}

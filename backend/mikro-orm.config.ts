@@ -12,6 +12,7 @@ import { Article } from './src/article/article.entity';
 import { Comment } from './src/article/comment.entity';
 import { InitialMigration } from './src/migrations/InitialMigration';
 import { AddArticleCoAuthorsMigration } from './src/migrations/AddArticleCoAuthorsMigration';
+import { AddArticleLocksMigration } from './src/migrations/AddArticleLocksMigration';
 
 export default defineConfig({
   host: 'db',
@@ -28,6 +29,10 @@ export default defineConfig({
       {
         name: 'AddArticleCoAuthorsMigration',
         class: AddArticleCoAuthorsMigration,
+      },
+      {
+        name: 'AddArticleLocksMigration',
+        class: AddArticleLocksMigration,
       },
     ],
   },

@@ -64,6 +64,32 @@ export class ArticleController {
     return this.articleService.delete(+userId, params.slug);
   }
 
+  @ApiOperation({ summary: 'Acquire article edit lock' })
+  @ApiResponse({ status: 201, description: 'The article lock has been successfully acquired.' })
+  @ApiResponse({ status: 403, description: 'Forbidden.' })
+  @ApiResponse({ status: 409, description: 'Conflict.' })
+  @Post(':slug/lock')
+  async lock(@User('id') userId: number, @Param('slug') slug: string): Promise<IArticleRO> {
+    return this.articleService.acquireLock(+userId, slug);
+  }
+
+  @ApiOperation({ summary: 'Ping article edit lock' })
+  @ApiResponse({ status: 201, description: 'The article lock has been successfully refreshed.' })
+  @ApiResponse({ status: 403, description: 'Forbidden.' })
+  @ApiResponse({ status: 409, description: 'Conflict.' })
+  @Post(':slug/ping')
+  async ping(@User('id') userId: number, @Param('slug') slug: string): Promise<IArticleRO> {
+    return this.articleService.pingLock(+userId, slug);
+  }
+
+  @ApiOperation({ summary: 'Release article edit lock' })
+  @ApiResponse({ status: 200, description: 'The article lock has been successfully released.' })
+  @ApiResponse({ status: 403, description: 'Forbidden.' })
+  @Delete(':slug/lock')
+  async unlock(@User('id') userId: number, @Param('slug') slug: string): Promise<IArticleRO> {
+    return this.articleService.releaseLock(+userId, slug);
+  }
+
   @ApiOperation({ summary: 'Create comment' })
   @ApiResponse({ status: 201, description: 'The comment has been successfully created.' })
   @ApiResponse({ status: 403, description: 'Forbidden.' })

@@ -1,13 +1,17 @@
 import { EntityManager, QueryOrder } from '@mikro-orm/core';
 import { EntityRepository } from '@mikro-orm/mysql';
 import { InjectRepository } from '@mikro-orm/nestjs';
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 
 import { User } from '../user/user.entity';
 import { Article } from './article.entity';
 import { IArticleRO, IArticlesRO, ICommentsRO } from './article.interface';
 import { Comment } from './comment.entity';
 import { CreateArticleDto, CreateCommentDto } from './dto';
+
+const ARTICLE_LOCK_TTL_MS = 5 * 60 * 1000;
+const ARTICLE_LOCKED_BY_ANOTHER_MESSAGE = 'This article is currently locked for editing by another user.';
+const ARTICLE_LOCK_LOST_MESSAGE = 'You have lost the edit lock for this article.';
 
 @Injectable()
 export class ArticleService {
@@ -169,9 +173,13 @@ export class ArticleService {
       { id: userId },
       { populate: ['followers', 'favorites', 'articles'] },
     );
-    const article = await this.articleRepository.findOneOrFail({ slug }, { populate: ['author', 'coAuthors'] });
+    const article = await this.articleRepository.findOneOrFail(
+      { slug },
+      { populate: ['author', 'coAuthors', 'lockedBy'] },
+    );
 
     this.assertCanEdit(article, userId);
+    this.assertHasActiveLock(article, userId, new Date());
 
     article.title = articleData.title;
     article.description = articleData.description;
@@ -195,12 +203,116 @@ export class ArticleService {
     return this.articleRepository.nativeDelete({ slug });
   }
 
+  async acquireLock(userId: number, slug: string): Promise<IArticleRO> {
+    const user = await this.userRepository.findOne({ id: userId }, { populate: ['followers', 'favorites'] });
+    const article = await this.articleRepository.findOneOrFail(
+      { slug },
+      { populate: ['author', 'coAuthors', 'lockedBy'] },
+    );
+
+    this.assertCanEdit(article, userId);
+
+    const now = new Date();
+
+    if (!article.lockedBy || this.isLockExpired(article, now)) {
+      this.assignLock(article, user!, now);
+      await this.em.flush();
+
+      return { article: article.toJSON(user!) };
+    }
+
+    if (article.lockedBy.id === userId) {
+      article.lastPingAt = now;
+      article.lockedAt ??= now;
+      await this.em.flush();
+
+      return { article: article.toJSON(user!) };
+    }
+
+    throw this.lockConflict(ARTICLE_LOCKED_BY_ANOTHER_MESSAGE);
+  }
+
+  async pingLock(userId: number, slug: string): Promise<IArticleRO> {
+    const user = await this.userRepository.findOne({ id: userId }, { populate: ['followers', 'favorites'] });
+    const article = await this.articleRepository.findOneOrFail(
+      { slug },
+      { populate: ['author', 'coAuthors', 'lockedBy'] },
+    );
+
+    this.assertCanEdit(article, userId);
+    this.assertHasActiveLock(article, userId, new Date());
+
+    article.lastPingAt = new Date();
+    await this.em.flush();
+
+    return { article: article.toJSON(user!) };
+  }
+
+  async releaseLock(userId: number, slug: string): Promise<IArticleRO> {
+    const user = await this.userRepository.findOne({ id: userId }, { populate: ['followers', 'favorites'] });
+    const article = await this.articleRepository.findOneOrFail(
+      { slug },
+      { populate: ['author', 'coAuthors', 'lockedBy'] },
+    );
+
+    this.assertCanEdit(article, userId);
+
+    const now = new Date();
+
+    if (article.lockedBy?.id === userId || this.isLockExpired(article, now)) {
+      this.clearLock(article);
+      await this.em.flush();
+    }
+
+    return { article: article.toJSON(user!) };
+  }
+
   private assertCanEdit(article: Article, userId: number) {
     if (article.author.id === userId || article.coAuthors.getItems().some((coAuthor) => coAuthor.id === userId)) {
       return;
     }
 
     throw new ForbiddenException({ errors: { article: ['You are not allowed to edit this article'] } });
+  }
+
+  private assertHasActiveLock(article: Article, userId: number, now: Date) {
+    if (!article.lockedBy) {
+      throw this.lockConflict(ARTICLE_LOCK_LOST_MESSAGE);
+    }
+
+    if (article.lockedBy.id !== userId) {
+      throw this.lockConflict(ARTICLE_LOCKED_BY_ANOTHER_MESSAGE);
+    }
+
+    if (this.isLockExpired(article, now)) {
+      throw this.lockConflict(ARTICLE_LOCK_LOST_MESSAGE);
+    }
+  }
+
+  private assignLock(article: Article, user: User, now: Date) {
+    article.lockedBy = user;
+    article.lockedAt = now;
+    article.lastPingAt = now;
+  }
+
+  private clearLock(article: Article) {
+    article.lockedBy = null;
+    article.lockedAt = null;
+    article.lastPingAt = null;
+  }
+
+  private isLockExpired(article: Article, now: Date) {
+    const lastActivity = article.lastPingAt ?? article.lockedAt;
+
+    if (!lastActivity) {
+      return true;
+    }
+
+    return now.getTime() - lastActivity.getTime() >= ARTICLE_LOCK_TTL_MS;
+  }
+
+  private lockConflict(message: string) {
+    return new ConflictException({ errors: { article: [message] } });
   }
 
   private async resolveCoAuthors(usernames: string[] | undefined, author: User): Promise<User[]> {
