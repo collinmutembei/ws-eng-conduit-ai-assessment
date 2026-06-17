@@ -14,7 +14,9 @@ export function ArticleEditor({ onSubmit }: { onSubmit: (ev: React.FormEvent) =>
       <ContainerPage>
         <div className='col-md-10 offset-md-1 col-xs-12'>
           <GenericForm
-            formObject={{ ...article, tag } as unknown as Record<string, string | null>}
+            formObject={
+              { ...article, coAuthors: article.coAuthors.join(', '), tag } as unknown as Record<string, string | null>
+            }
             disabled={submitting}
             errors={errors}
             onChange={onUpdateField}
@@ -30,6 +32,11 @@ export function ArticleEditor({ onSubmit }: { onSubmit: (ev: React.FormEvent) =>
                 placeholder: 'Write your article (in markdown)',
                 fieldType: 'textarea',
                 rows: 8,
+                lg: false,
+              }),
+              buildGenericFormField({
+                name: 'coAuthors',
+                placeholder: 'Enter co-author emails separated by commas',
                 lg: false,
               }),
               buildGenericFormField({

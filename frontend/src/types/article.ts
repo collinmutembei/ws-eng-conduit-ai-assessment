@@ -7,6 +7,7 @@ export interface Article {
   description: string;
   body: string;
   tagList: string[];
+  coAuthors: string[];
   createdAt: string;
   updatedAt: string;
   favorited: boolean;
@@ -20,6 +21,7 @@ export const articleDecoder: Decoder<Article> = object({
   description: string,
   body: string,
   tagList: array(string),
+  coAuthors: array(string),
   createdAt: string,
   updatedAt: string,
   favorited: boolean,
@@ -42,6 +44,7 @@ export interface ArticleForEditor {
   description: string;
   body: string;
   tagList: string[];
+  coAuthors: string[];
 }
 
 export interface ArticlesFilters {

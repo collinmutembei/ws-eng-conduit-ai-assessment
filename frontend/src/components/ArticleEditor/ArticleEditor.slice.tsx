@@ -12,7 +12,7 @@ export interface EditorState {
 }
 
 const initialState: EditorState = {
-  article: { title: '', body: '', tagList: [], description: '' },
+  article: { title: '', body: '', tagList: [], coAuthors: [], description: '' },
   tag: '',
   submitting: false,
   errors: {},
@@ -30,6 +30,14 @@ const slice = createSlice({
     ) => {
       if (name === 'tag') {
         state.tag = value;
+        return;
+      }
+
+      if (name === 'coAuthors') {
+        state.article.coAuthors = value
+          .split(',')
+          .map((email) => email.trim())
+          .filter(Boolean);
         return;
       }
 
