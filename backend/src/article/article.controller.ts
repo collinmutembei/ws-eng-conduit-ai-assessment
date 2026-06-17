@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagg
 import { User } from '../user/user.decorator';
 import { IArticleRO, IArticlesRO, ICommentsRO } from './article.interface';
 import { ArticleService } from './article.service';
-import { CreateArticleDto, CreateCommentDto } from './dto';
+import { CreateArticleDto, CreateCommentDto, UpdateArticleDto } from './dto';
 
 @ApiBearerAuth()
 @ApiTags('articles')
@@ -51,9 +51,36 @@ export class ArticleController {
   async update(
     @User('id') user: number,
     @Param() params: Record<string, string>,
-    @Body('article') articleData: CreateArticleDto,
+    @Body('article') articleData: UpdateArticleDto,
   ) {
     return this.articleService.update(+user, params.slug, articleData);
+  }
+
+  @ApiOperation({ summary: 'Acquire article lock' })
+  @ApiResponse({ status: 200, description: 'The article lock has been successfully acquired.' })
+  @ApiResponse({ status: 403, description: 'Forbidden.' })
+  @ApiResponse({ status: 409, description: 'Conflict.' })
+  @Post(':slug/lock')
+  async lock(@User('id') userId: number, @Param('slug') slug: string) {
+    return this.articleService.lock(+userId, slug);
+  }
+
+  @ApiOperation({ summary: 'Release article lock' })
+  @ApiResponse({ status: 200, description: 'The article lock has been successfully released.' })
+  @ApiResponse({ status: 403, description: 'Forbidden.' })
+  @ApiResponse({ status: 409, description: 'Conflict.' })
+  @Delete(':slug/lock')
+  async unlock(@User('id') userId: number, @Param('slug') slug: string) {
+    return this.articleService.unlock(+userId, slug);
+  }
+
+  @ApiOperation({ summary: 'Keep article lock alive' })
+  @ApiResponse({ status: 200, description: 'The article lock heartbeat has been updated.' })
+  @ApiResponse({ status: 403, description: 'Forbidden.' })
+  @ApiResponse({ status: 409, description: 'Conflict.' })
+  @Post(':slug/ping')
+  async ping(@User('id') userId: number, @Param('slug') slug: string) {
+    return this.articleService.pingLock(+userId, slug);
   }
 
   @ApiOperation({ summary: 'Delete article' })

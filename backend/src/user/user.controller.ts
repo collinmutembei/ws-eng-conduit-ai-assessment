@@ -49,6 +49,11 @@ export class UserController {
     return { user };
   }
 
+  @Get('users/all')
+  async findAllForDropdown() {
+    return this.userService.findAllForDropdown();
+  }
+
   @Get('users')
   async findAll(@Query() query: Record<string, string>) {
     return this.userService.findAllWithPagination(query);
