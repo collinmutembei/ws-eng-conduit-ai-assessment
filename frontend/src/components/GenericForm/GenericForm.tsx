@@ -69,7 +69,9 @@ export const GenericForm: FC<GenericFormProps> = ({
             />
           ),
         )}
-        <button className='btn btn-lg btn-primary pull-xs-right'>{submitButtonText}</button>
+        <button className='btn btn-lg btn-primary pull-xs-right' type='submit' disabled={disabled}>
+          {submitButtonText}
+        </button>
       </fieldset>
     </form>
   </Fragment>

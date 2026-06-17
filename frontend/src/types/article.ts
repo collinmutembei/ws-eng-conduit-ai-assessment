@@ -72,5 +72,8 @@ export function canEditArticle(article: Article, user: Pick<User, 'username'> | 
     return false;
   }
 
-  return article.author.username === user.username || article.coAuthors.some((coAuthor) => coAuthor.username === user.username);
+  return (
+    article.author.username === user.username ||
+    article.coAuthors.some((coAuthor) => coAuthor.username === user.username)
+  );
 }

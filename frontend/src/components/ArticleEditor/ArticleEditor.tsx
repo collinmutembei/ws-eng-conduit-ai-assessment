@@ -6,69 +6,66 @@ import { buildGenericFormField } from '../../types/genericFormField';
 import { ContainerPage } from '../ContainerPage/ContainerPage';
 import { GenericForm } from '../GenericForm/GenericForm';
 import {
-  addCoAuthor,
   addTag,
   clearErrors,
   EditorState,
   loadAvailableCoAuthors,
-  removeCoAuthor,
   removeTag,
+  setCoAuthors,
   updateField,
 } from './ArticleEditor.slice';
 
-export function ArticleEditor({ onSubmit }: { onSubmit: (ev: React.FormEvent) => void }) {
-  const {
-    article,
-    submitting,
-    tag,
-    coAuthor,
-    errors,
-    availableCoAuthors,
-    lockAcquired,
-    lockError,
-  } = useStore(({ editor }) => editor);
+export function ArticleEditor({
+  onSubmit,
+  onCancel,
+}: {
+  onSubmit: (ev: React.FormEvent) => void;
+  onCancel?: () => void;
+}) {
+  const { article, submitting, tag, errors, availableCoAuthors, lockAcquired, isLockedByOther, lockError } = useStore(
+    ({ editor }) => editor,
+  );
   const currentUser = useStore(({ app }) => app.user);
 
   useEffect(() => {
     void loadAvailableUsers();
   }, []);
 
-  const coAuthorSuggestions = availableCoAuthors.filter(
-    ({ username }) => username !== currentUser?.username && !article.coAuthors?.includes(username),
-  );
-  const disabled = submitting || (!!lockError && !lockAcquired);
+  const selectableCoAuthors = availableCoAuthors.filter(({ username }) => username !== currentUser?.username);
+  const disabled = submitting || isLockedByOther;
 
   return (
     <div className='editor-page'>
       <ContainerPage>
         <div className='col-md-10 offset-md-1 col-xs-12'>
-          {lockError && <div className='alert alert-danger'>{lockError}</div>}
+          {lockError && (
+            <div className={`alert ${isLockedByOther ? 'alert-danger' : 'alert-warning'}`}>{lockError}</div>
+          )}
           {lockAcquired && <div className='alert alert-info'>This article is locked for editing by you.</div>}
 
           <fieldset className='form-group'>
-            <div className='input-group'>
-              <input
-                className='form-control'
-                type='text'
-                placeholder='Search users to add as co-authors'
-                disabled={disabled}
-                value={coAuthor}
-                list='available-coauthors'
-                onChange={onCoAuthorChange}
-              />
-              <button className='btn btn-outline-primary' type='button' disabled={disabled} onClick={onAddCoAuthor}>
-                Add co-author
-              </button>
-            </div>
-            <datalist id='available-coauthors'>
-              {coAuthorSuggestions.map(({ username }) => (
-                <option key={username} value={username} />
+            <label className='form-control-label' htmlFor='co-authors-select'>
+              Co-Authors
+            </label>
+            <select
+              id='co-authors-select'
+              className='form-control'
+              multiple
+              size={Math.min(Math.max(selectableCoAuthors.length, 4), 8)}
+              disabled={disabled}
+              value={article.coAuthors ?? []}
+              onChange={onCoAuthorsChange}
+            >
+              {selectableCoAuthors.map(({ username }) => (
+                <option key={username} value={username}>
+                  {username}
+                </option>
               ))}
-            </datalist>
-            <div className='tag-list' style={{ marginTop: '0.5rem' }}>
-              {article.coAuthors?.map((username, index) => (
-                <span key={username} className='tag-default tag-pill' onClick={() => onRemoveCoAuthor(username, index)}>
-                  <i className='ion-close-round'></i>
+            </select>
+            <small className='text-muted'>Hold Ctrl/Cmd to select multiple co-authors.</small>
+            <div className='tag-list' style={{ marginTop: '0.75rem' }}>
+              {article.coAuthors?.map((username) => (
+                <span key={username} className='tag-default tag-pill'>
                   {username}
                 </span>
               ))}
@@ -103,6 +100,18 @@ export function ArticleEditor({ onSubmit }: { onSubmit: (ev: React.FormEvent) =>
               }),
             ]}
           />
+
+          {onCancel && (
+            <button
+              className='btn btn-outline-secondary pull-xs-right'
+              type='button'
+              disabled={disabled}
+              style={{ marginTop: '1rem', marginRight: '0.5rem' }}
+              onClick={onCancel}
+            >
+              Cancel
+            </button>
+          )}
         </div>
       </ContainerPage>
     </div>
@@ -121,8 +130,8 @@ function onUpdateField(name: string, value: string) {
   store.dispatch(updateField({ name: name as keyof EditorState['article'], value }));
 }
 
-function onCoAuthorChange(ev: React.ChangeEvent<HTMLInputElement>) {
-  store.dispatch(updateField({ name: 'coAuthor', value: ev.target.value }));
+function onCoAuthorsChange(ev: React.ChangeEvent<HTMLSelectElement>) {
+  store.dispatch(setCoAuthors(Array.from(ev.target.selectedOptions, ({ value }) => value)));
 }
 
 function onAddTag() {
@@ -131,12 +140,4 @@ function onAddTag() {
 
 function onRemoveTag(_: string, index: number) {
   store.dispatch(removeTag(index));
-}
-
-function onAddCoAuthor() {
-  store.dispatch(addCoAuthor());
-}
-
-function onRemoveCoAuthor(_: string, index: number) {
-  store.dispatch(removeCoAuthor(index));
 }
