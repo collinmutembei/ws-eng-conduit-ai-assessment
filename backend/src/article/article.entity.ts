@@ -3,6 +3,7 @@ import {
   Collection,
   Entity,
   EntityDTO,
+  ManyToMany,
   ManyToOne,
   OneToMany,
   PrimaryKey,
@@ -42,6 +43,18 @@ export class Article {
 
   @ManyToOne(() => User, { fieldName: 'author_id' })
   author: User;
+
+  @ManyToMany(() => User, (user) => user.coAuthoredArticles, { owner: true })
+  coAuthors = new Collection<User>(this);
+
+  @ManyToOne(() => User, { fieldName: 'locked_by_id', nullable: true })
+  lockedBy?: User;
+
+  @Property({ type: 'date', nullable: true, fieldName: 'locked_at' })
+  lockedAt?: Date;
+
+  @Property({ type: 'date', nullable: true, fieldName: 'last_ping_at' })
+  lastPingAt?: Date;
 
   @OneToMany(() => Comment, (comment) => comment.article, { eager: true, orphanRemoval: true })
   comments = new Collection<Comment>(this);
