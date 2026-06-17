@@ -3,6 +3,7 @@ import {
   Collection,
   Entity,
   EntityDTO,
+  ManyToMany,
   ManyToOne,
   OneToMany,
   PrimaryKey,
@@ -43,6 +44,15 @@ export class Article {
   @ManyToOne(() => User, { fieldName: 'author_id' })
   author: User;
 
+  @ManyToMany({
+    entity: () => User,
+    owner: true,
+    pivotTable: 'article_co_authors',
+    joinColumn: 'article_id',
+    inverseJoinColumn: 'user_id',
+  })
+  coAuthors = new Collection<User>(this);
+
   @OneToMany(() => Comment, (comment) => comment.article, { eager: true, orphanRemoval: true })
   comments = new Collection<Comment>(this);
 
@@ -58,14 +68,16 @@ export class Article {
   }
 
   toJSON(user?: User) {
-    const o = wrap<Article>(this).toObject() as ArticleDTO;
+    const o = wrap<Article>(this).toObject() as unknown as ArticleDTO;
     o.favorited = user && user.favorites.isInitialized() ? user.favorites.contains(this) : false;
     o.author = this.author.toJSON(user);
+    o.coAuthors = this.coAuthors.isInitialized() ? this.coAuthors.getItems().map((coAuthor) => coAuthor.email) : [];
 
     return o;
   }
 }
 
-export interface ArticleDTO extends EntityDTO<Article> {
+export interface ArticleDTO extends Omit<EntityDTO<Article>, 'coAuthors'> {
   favorited?: boolean;
+  coAuthors?: string[];
 }

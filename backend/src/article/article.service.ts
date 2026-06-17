@@ -1,7 +1,7 @@
-import { EntityManager, QueryOrder, wrap } from '@mikro-orm/core';
+import { EntityManager, QueryOrder } from '@mikro-orm/core';
 import { EntityRepository } from '@mikro-orm/mysql';
 import { InjectRepository } from '@mikro-orm/nestjs';
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 
 import { User } from '../user/user.entity';
 import { Article } from './article.entity';
@@ -65,7 +65,7 @@ export class ArticleService {
     }
 
     const ids = (await qb.getResult()).map((a) => a.id);
-    const articles = await this.articleRepository.find({ id: { $in: ids } }, { populate: ['author'] });
+    const articles = await this.articleRepository.find({ id: { $in: ids } }, { populate: ['author', 'coAuthors'] });
     return { articles: articles.map((a) => a.toJSON(user!)), articlesCount };
   }
 
@@ -76,7 +76,7 @@ export class ArticleService {
     const res = await this.articleRepository.findAndCount(
       { author: { followers: userId } },
       {
-        populate: ['author'],
+        populate: ['author', 'coAuthors'],
         orderBy: { createdAt: QueryOrder.DESC },
         limit: +query.limit,
         offset: +query.offset,
@@ -91,12 +91,12 @@ export class ArticleService {
     const user = userId
       ? await this.userRepository.findOneOrFail(userId, { populate: ['followers', 'favorites'] })
       : undefined;
-    const article = await this.articleRepository.findOne(where, { populate: ['author'] });
+    const article = await this.articleRepository.findOne(where, { populate: ['author', 'coAuthors'] });
     return { article: article && article.toJSON(user) } as IArticleRO;
   }
 
   async addComment(userId: number, slug: string, dto: CreateCommentDto) {
-    const article = await this.articleRepository.findOneOrFail({ slug }, { populate: ['author'] });
+    const article = await this.articleRepository.findOneOrFail({ slug }, { populate: ['author', 'coAuthors'] });
     const author = await this.userRepository.findOneOrFail(userId);
     const comment = new Comment(author, article, dto.body);
     await this.em.persistAndFlush(comment);
@@ -105,7 +105,7 @@ export class ArticleService {
   }
 
   async deleteComment(userId: number, slug: string, id: number): Promise<IArticleRO> {
-    const article = await this.articleRepository.findOneOrFail({ slug }, { populate: ['author'] });
+    const article = await this.articleRepository.findOneOrFail({ slug }, { populate: ['author', 'coAuthors'] });
     const user = await this.userRepository.findOneOrFail(userId);
     const comment = this.commentRepository.getReference(id);
 
@@ -118,7 +118,7 @@ export class ArticleService {
   }
 
   async favorite(id: number, slug: string): Promise<IArticleRO> {
-    const article = await this.articleRepository.findOneOrFail({ slug }, { populate: ['author'] });
+    const article = await this.articleRepository.findOneOrFail({ slug }, { populate: ['author', 'coAuthors'] });
     const user = await this.userRepository.findOneOrFail(id, { populate: ['favorites', 'followers'] });
 
     if (!user.favorites.contains(article)) {
@@ -131,7 +131,7 @@ export class ArticleService {
   }
 
   async unFavorite(id: number, slug: string): Promise<IArticleRO> {
-    const article = await this.articleRepository.findOneOrFail({ slug }, { populate: ['author'] });
+    const article = await this.articleRepository.findOneOrFail({ slug }, { populate: ['author', 'coAuthors'] });
     const user = await this.userRepository.findOneOrFail(id, { populate: ['followers', 'favorites'] });
 
     if (user.favorites.contains(article)) {
@@ -154,26 +154,74 @@ export class ArticleService {
       { populate: ['followers', 'favorites', 'articles'] },
     );
     const article = new Article(user!, dto.title, dto.description, dto.body);
-    article.tagList.push(...dto.tagList);
+    article.tagList = dto.tagList ?? [];
+    for (const coAuthor of await this.resolveCoAuthors(dto.coAuthors, user!)) {
+      article.coAuthors.add(coAuthor);
+    }
     user?.articles.add(article);
+    await this.em.persistAndFlush(article);
+
+    return { article: article.toJSON(user!) };
+  }
+
+  async update(userId: number, slug: string, articleData: CreateArticleDto): Promise<IArticleRO> {
+    const user = await this.userRepository.findOne(
+      { id: userId },
+      { populate: ['followers', 'favorites', 'articles'] },
+    );
+    const article = await this.articleRepository.findOneOrFail({ slug }, { populate: ['author', 'coAuthors'] });
+
+    this.assertCanEdit(article, userId);
+
+    article.title = articleData.title;
+    article.description = articleData.description;
+    article.body = articleData.body;
+    article.tagList = articleData.tagList ?? [];
+    article.coAuthors.removeAll();
+    for (const coAuthor of await this.resolveCoAuthors(articleData.coAuthors, article.author)) {
+      article.coAuthors.add(coAuthor);
+    }
+
     await this.em.flush();
 
     return { article: article.toJSON(user!) };
   }
 
-  async update(userId: number, slug: string, articleData: Partial<Article>): Promise<IArticleRO> {
-    const user = await this.userRepository.findOne(
-      { id: userId },
-      { populate: ['followers', 'favorites', 'articles'] },
-    );
-    const article = await this.articleRepository.findOne({ slug }, { populate: ['author'] });
-    wrap(article).assign(articleData);
-    await this.em.flush();
+  async delete(userId: number, slug: string) {
+    const article = await this.articleRepository.findOneOrFail({ slug }, { populate: ['author', 'coAuthors'] });
 
-    return { article: article!.toJSON(user!) };
+    this.assertCanEdit(article, userId);
+
+    return this.articleRepository.nativeDelete({ slug });
   }
 
-  async delete(slug: string) {
-    return this.articleRepository.nativeDelete({ slug });
+  private assertCanEdit(article: Article, userId: number) {
+    if (article.author.id === userId || article.coAuthors.getItems().some((coAuthor) => coAuthor.id === userId)) {
+      return;
+    }
+
+    throw new ForbiddenException({ errors: { article: ['You are not allowed to edit this article'] } });
+  }
+
+  private async resolveCoAuthors(emails: string[] | undefined, author: User): Promise<User[]> {
+    const coAuthorEmails = [
+      ...new Set((emails ?? []).map((email) => email.trim().toLowerCase()).filter(Boolean)),
+    ].filter((email) => email !== author.email.toLowerCase());
+
+    if (coAuthorEmails.length === 0) {
+      return [];
+    }
+
+    const coAuthors = await this.userRepository.find({ email: { $in: coAuthorEmails } });
+    const foundEmails = new Set(coAuthors.map((coAuthor) => coAuthor.email.toLowerCase()));
+    const missingEmails = coAuthorEmails.filter((email) => !foundEmails.has(email));
+
+    if (missingEmails.length > 0) {
+      throw new BadRequestException({
+        errors: { coAuthors: missingEmails.map((email) => `Unknown user email: ${email}`) },
+      });
+    }
+
+    return coAuthors;
   }
 }
