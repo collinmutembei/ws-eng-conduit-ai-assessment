@@ -17,40 +17,74 @@ We are implementing a "Co-Authors" feature that allows multiple users to edit th
    * In the React article editor component, add a simple text input field for "Co-Authors".
    * Parse the comma-separated emails and include them in the article creation/update payload via the API agent (`agent.ts`).
 
-### Phase 2: ADVANCED Implementation (Locking & Dropdown UX)
+### Phase 2: UX Upgrade & E2E Automation (Advanced Prep)
 1. **User Fetching Endpoint (NestJS):**
-   * Create a lightweight `GET /users` endpoint (or extend the existing profile endpoint) to return a list of all current users for the frontend dropdown. *Security constraint: Ensure passwords and raw tokens are excluded.*
-2. **Locking Metadata (`Article` Entity):**
-   * Add three nullable fields to the `Article` entity: `lockedById` (relation to User), `lockedAt` (timestamp), and `lastPingAt` (timestamp). Run migrations.
-3. **Lock Lifecycle Endpoints (NestJS):**
-   * `POST /articles/:slug/lock`: Acquires the lock. Rejects with `409 Conflict` if `lockedById` is another user AND `lastPingAt` is within the last 5 minutes. Updates the fields if successful.
-   * `POST /articles/:slug/ping`: Updates `lastPingAt` to `now()`. Rejects if the user doesn't hold the lock.
-   * `DELETE /articles/:slug/lock`: Clears the lock fields.
-   * **Update Guard:** Modify the existing PUT/update article endpoint to ensure the user saving the article actually holds the valid lock.
-4. **Frontend UI - Advanced (React):**
-   * **Dropdown:** Replace the basic comma-separated input with a multi-select dropdown (e.g., `react-select`) populated by the new `/users` endpoint.
-   * **Lock Acquisition (`useEffect`):** When the editor mounts for an existing article, immediately call the `/lock` API. 
-     * *Success:* Set up a `setInterval` to call the `/ping` endpoint every 60 seconds.
-     * *Failure (409):* Set an `isLocked` state to true. Disable the form and show the required banner: "This article is currently locked for editing by another user."
-   * **Lock Release:** In the `useEffect` cleanup return function, clear the interval and call the `/unlock` API (handles navigating away). Also call `/unlock` on successful form save.
-   * **Lost Lock State:** If a `ping` or `save` fails because the lock was lost (e.g., internet dropped and 5 mins passed), catch the error and show an alert: "You have lost the editing lock."
+   * Create a lightweight `GET /users` endpoint to return a list of all current users (specifically their usernames and profile data). 
+   * *Security constraint:* Ensure passwords, emails, and raw tokens are explicitly excluded from this payload.
+2. **Frontend UI - Multi-Select Dropdown (React):**
+   * Replace the basic comma-separated email input in the editor with a multi-select dropdown component.
+   * Populate this dropdown using the new `/users` endpoint.
+   * Map the selected usernames back to the required format for the `CreateArticleDto` and `UpdateArticleDto`.
+3. **Automated Acceptance Testing (Playwright) - Part 1:**
+   * Initialize a Playwright test suite (`tests/article-coauthors.spec.ts`).
+   * **Test 1:** Automate logging in as Zolly, creating a new article, selecting John from the new co-author dropdown, capturing `submission/test1.png`, and saving.
+   * **Test 2:** Automate logging in as John, opening the shared article, verifying edit access, and capturing `submission/test2.png`.
+
+### Phase 3: ADVANCED Implementation (Pessimistic Locking)
+1. **Locking Metadata (`Article` Entity):**
+   * Add nullable fields to the `Article` entity: `lockedById` (relation to User), `lockedAt` (timestamp), and `lastPingAt` (timestamp). Run migrations.
+2. **Lock Lifecycle Endpoints (NestJS):**
+   * `POST /articles/:slug/lock`: Acquires the lock (fails with 409 if held by another and `lastPingAt` < 5 mins ago).
+   * `POST /articles/:slug/ping`: Updates `lastPingAt` to `now()`.
+   * `DELETE /articles/:slug/lock`: Clears the lock.
+   * Update the `PUT` article endpoint to reject saves if the lock is lost.
+3. **Frontend Lock Integration (React):**
+   * Use `useEffect` in the editor to attempt lock acquisition on mount.
+   * Set up a 60-second `setInterval` ping if successful. 
+   * If locked by another, disable the form and show the warning banner. Release the lock on unmount or save.
+4. **Automated Acceptance Testing (Playwright) - Part 2:**
+   * **Test 3:** Automate an incognito session for Zolly attempting to edit the locked article, verifying the error banner, and capturing `submission/test3.png`.
+
 
 ## Decisions
 
-* **Decision:** Implement Pessimistic Locking with a Time-To-Live (TTL) Heartbeat.
-  * **Alternative:** Optimistic locking via version numbers (ETags).
-  * **Alternative:** WebSockets for real-time presence.
-  * **Rationale:** The ADVANCED user story explicitly states the article "becomes locked" when opened and blocks other users from trying to edit. Optimistic locking only fails at the *save* step, which violates the requirement. WebSockets would handle real-time unlocks beautifully, but introduce heavy infrastructure requirements (connection management, sticky sessions). HTTP polling with a TTL heartbeat solves the problem with the least new machinery, natively handling edge cases like browser crashes (the lock just expires after 5 minutes of missed pings).
+* **Decision: Phased Implementation Strategy (Risk Management)**
+  * **Alternative:** A "big-bang" approach, attempting to implement the schema, UI, and complex locking logic all in a single pass.
+  * **Rationale:** As a Team Lead, prioritizing delivery and mitigating risk is paramount. Implementing the `BASIC` requirements first guarantees we secure a passing baseline. Upgrading the UX and establishing Playwright automation in Phase 2 creates an automated safety net. Isolating the complex `ADVANCED` stateful locking into Phase 3 ensures that if we encounter severe edge cases, our foundational feature is already functioning and tested. 
 
-* **Decision:** Track lock state directly on the `Article` database table.
-  * **Alternative:** Use an external cache like Redis.
-  * **Rationale:** Adding Redis violates the unstated constraint of keeping the stack simple and incremental. Because the lock dictates whether the primary `UPDATE` query on the article is allowed, keeping `lockedById` directly on the `Article` record ensures transactional integrity.
+* **Decision: Pessimistic Locking via HTTP Polling with a 5-Minute TTL**
+  * **Alternative:** Optimistic locking (version numbers/ETags) or WebSockets.
+  * **Rationale:** The ADVANCED user story strictly mandates that the article is physically locked *upon opening*. Optimistic locking fails this constraint, as it only prevents conflicts at the final *save* action. While WebSockets provide elegant real-time presence, they introduce significant infrastructure overhead (connection state management, load balancer sticky sessions). HTTP polling with a 5-minute Time-To-Live (TTL) heartbeat natively solves complex operational edge cases—like a user losing their internet connection or their browser crashing—because the lock implicitly expires without requiring a reliable `unload` network event. This adheres to the "Simplicity" and "Operational Reality" grading criteria.
 
-* **Decision:** Tie the lock heartbeat to React's component lifecycle (`useEffect`).
-  * **Alternative:** Handle locking in global state (Redux/Zustand) or a background service worker.
-  * **Rationale:** By managing the `setInterval` ping inside the Editor component's `useEffect`, we guarantee that the cleanup function fires exactly when the user unmounts the component (navigates away). This keeps the frontend architecture strictly localized to the feature without polluting global state.
+* **Decision: Persisting Lock State directly in the `Article` Database Entity**
+  * **Alternative:** Utilizing an external, distributed in-memory cache like Redis.
+  * **Rationale:** While Redis is the enterprise standard for high-throughput distributed locks, introducing it violates the assessment's "Incrementalism" constraint (solving the problem with the *least new machinery*). Because the lock state ultimately dictates whether a `PUT` (save) operation is authorized, keeping `lockedById`, `lockedAt`, and `lastPingAt` on the `Article` table guarantees strict transactional consistency without introducing an external point of failure.
+
+* **Decision: Component-Bound Polling Lifecycle (React `useEffect`)**
+  * **Alternative:** Global state side-effects (e.g., Redux Sagas) or dedicated background Web Workers.
+  * **Rationale:** Tying the heartbeat `setInterval` directly to the `ArticleEditor`'s `useEffect` hook is the most idiomatic and localized pattern for this architecture. The React cleanup function guarantees that the `unlock` endpoint is called and polling terminates the exact millisecond the component unmounts (when the user navigates away). This prevents memory leaks and artificial lock inflation without polluting the global application state.
+
+* **Decision: Dedicated, Stripped-Down `GET /users` Endpoint**
+  * **Alternative:** Reusing a generic user fetching endpoint or returning full user entities.
+  * **Rationale:** Security and payload optimization. Returning full user records to populate a frontend dropdown risks leaking sensitive PII (emails) and security vectors (password hashes, tokens) to the client browser. The new endpoint is strictly shaped to return only `username` and `image`, protecting tenant data while minimizing network payload size.
+
+* **Decision: Automated Artifact Generation via Playwright**
+  * **Alternative:** Manually opening browser windows, clicking through the UI, and using OS screenshot tools.
+  * **Rationale:** Manual testing is prone to human error, difficult to reproduce during a review, and scales poorly. Scripting the three Acceptance Tests with Playwright not only generates the required `submission/` artifacts flawlessly, but it also demonstrates CI/CD readiness. Playwright's native support for isolated browser contexts allows us to perfectly and reliably simulate the concurrent multi-user scenario (Zolly vs. John) on a single local machine without session overlap.
 
 ## Notes
 
-* **Original Author Display:** As per scope notes, we must ensure that adding `coAuthors` does not break the standard "view article" page. We will not alter the main author display logic; co-authors are strictly an access-control mechanism for editing.
-* **Optional Story Prep:** This architecture perfectly sets up the optional story (Original author forced unlock). A "Force Unlock" button will simply invoke an endpoint that overrides `lockedById` without checking the 5-minute rule. When the displaced co-author's next heartbeat ping fires, it will return a `409 Conflict`, which the frontend can catch to trigger the required popup.
+* **Data Minimization and Security Scoping:**
+  The new `GET /users` endpoint introduced to populate the frontend multi-select dropdown must be strictly tailored. It must return only public-facing profiles (specifically `username` and `image`). Exposing full user payloads risks leaking sensitive fields like email addresses, password hashes, or account configuration tokens to the client application layout.
+
+* **Server-Authoritative Clock Verification:**
+  To prevent client-side system clock manipulation or drift from disrupting the pessimistic locking mechanism, all time calculations must rely entirely on the backend database or application server timestamp. When evaluating whether a lock has expired, the comparison must be calculated using `ServerTime - lastPingAt`. Client devices must never dictate or pass the current timestamp within the ping payloads.
+
+* **Deterministic Automated Artifact Collection:**
+  The Playwright script configured for Step 5 must be configured with explicit viewport configurations (e.g., 1280x720) to guarantee screenshot consistency across varying runner environments. The script must execute in a clean browser environment to prevent dirty session leakage between the simulated profiles of Zolly and John. All screenshots must be written directly to the `./submission/` directory without generating nested child folders, fulfilling the strict automated grading criteria.
+
+* **Operational Resilience against Network Degradation:**
+  The frontend React logic in `ArticleEditor.tsx` must gracefully handle network flapping or transient failures when dispatching heartbeat pings. A single failed ping due to a temporary network timeout should not instantly terminate the user session or clear the form state. Instead, the UI should retry the ping operation using a shallow retry count before executing a full state lockout and notifying the user.
+
+* **Architecture Alignment with the Optional Story:**
+  The structural decision to store locking fields on the primary database entity explicitly path-clears the implementation for the optional story. If the original author initiates a forced unlock command, the backend control plane simply overwrites the `lockedById` field with the author's identifier. The active co-author's background heartbeat loop will receive an immediate authorization rejection on its subsequent 60-second execution interval, providing a clean trigger to surface the local backup prompt and gracefully redirect them back to the article view dashboard.
