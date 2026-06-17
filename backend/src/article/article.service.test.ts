@@ -83,7 +83,7 @@ articlePrototype.toJSON = function toJSON(this: Article) {
       image: this.author.image,
       following: false,
     },
-    coAuthors: this.coAuthors.getItems().map((coAuthor) => coAuthor.email),
+    coAuthors: this.coAuthors.getItems().map((coAuthor) => coAuthor.username),
   };
 };
 
@@ -170,7 +170,7 @@ function createService({
   );
 }
 
-test('create assigns co-authors from unique email addresses and excludes the original author', async () => {
+test('create assigns co-authors from unique usernames and excludes the original author', async () => {
   const author = createUser(1, 'author', 'author@example.com');
   const firstCoAuthor = createUser(2, 'coauthor-one', 'coauthor1@example.com');
   const secondCoAuthor = createUser(3, 'coauthor-two', 'coauthor2@example.com');
@@ -192,20 +192,20 @@ test('create assigns co-authors from unique email addresses and excludes the ori
     description: 'desc',
     body: 'body',
     tagList: ['nestjs'],
-    coAuthors: ['coauthor1@example.com', 'author@example.com', 'coauthor2@example.com', 'coauthor1@example.com', '  '],
+    coAuthors: ['coauthor-one', 'author', 'coauthor-two', 'coauthor-one', '  '],
   };
 
   const result = await service.create(author.id, dto);
 
   assert.ok(persistedArticle instanceof Article);
   assert.deepEqual(
-    persistedArticle.coAuthors.getItems().map((coAuthor) => coAuthor.email),
-    ['coauthor1@example.com', 'coauthor2@example.com'],
+    persistedArticle.coAuthors.getItems().map((coAuthor) => coAuthor.username),
+    ['coauthor-one', 'coauthor-two'],
   );
-  assert.deepEqual(result.article.coAuthors, ['coauthor1@example.com', 'coauthor2@example.com']);
+  assert.deepEqual(result.article.coAuthors, ['coauthor-one', 'coauthor-two']);
 });
 
-test('create rejects unknown co-author email addresses', async () => {
+test('create rejects unknown co-author usernames', async () => {
   const author = createUser(1, 'author', 'author@example.com');
 
   const service = createService({
@@ -220,7 +220,7 @@ test('create rejects unknown co-author email addresses', async () => {
     description: 'desc',
     body: 'body',
     tagList: [],
-    coAuthors: ['missing@example.com'],
+    coAuthors: ['missing-user'],
   };
 
   await assert.rejects(
@@ -228,7 +228,7 @@ test('create rejects unknown co-author email addresses', async () => {
     (error: unknown) => {
       assert.ok(error instanceof BadRequestException);
       assert.deepEqual(error.getResponse(), {
-        errors: { coAuthors: ['Unknown user email: missing@example.com'] },
+        errors: { coAuthors: ['Unknown username: missing-user'] },
       });
       return true;
     },
@@ -257,7 +257,7 @@ test('update allows an assigned co-author to edit an article', async () => {
     description: 'Updated description',
     body: 'Updated body',
     tagList: ['updated'],
-    coAuthors: [coAuthor.email],
+    coAuthors: [coAuthor.username],
   });
 
   assert.equal(article.title, 'Updated title');
@@ -265,10 +265,10 @@ test('update allows an assigned co-author to edit an article', async () => {
   assert.equal(article.body, 'Updated body');
   assert.deepEqual(article.tagList, ['updated']);
   assert.deepEqual(
-    article.coAuthors.getItems().map((user) => user.email),
-    [coAuthor.email],
+    article.coAuthors.getItems().map((user) => user.username),
+    [coAuthor.username],
   );
-  assert.deepEqual(result.article.coAuthors, [coAuthor.email]);
+  assert.deepEqual(result.article.coAuthors, [coAuthor.username]);
 });
 
 test('update rejects users who are neither author nor co-author', async () => {
@@ -294,7 +294,7 @@ test('update rejects users who are neither author nor co-author', async () => {
         description: 'Updated description',
         body: 'Updated body',
         tagList: [],
-        coAuthors: [coAuthor.email],
+        coAuthors: [coAuthor.username],
       }),
     (error: unknown) => {
       assert.ok(error instanceof ForbiddenException);

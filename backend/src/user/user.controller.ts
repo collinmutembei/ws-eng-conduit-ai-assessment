@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, HttpException, Param, Post, Put, UsePipe
 import { ValidationPipe } from '../shared/pipes/validation.pipe';
 import { CreateUserDto, LoginUserDto, UpdateUserDto } from './dto';
 import { User } from './user.decorator';
-import { IUserRO } from './user.interface';
+import { IPublicUsersRO, IUserRO } from './user.interface';
 import { UserService } from './user.service';
 
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -50,7 +50,7 @@ export class UserController {
   }
 
   @Get('users')
-  async findAll(@Query() query: Record<string, string>) {
+  async findAll(@Query() query: Record<string, string>): Promise<IPublicUsersRO> {
     return this.userService.findAllWithPagination(query);
   }
 }

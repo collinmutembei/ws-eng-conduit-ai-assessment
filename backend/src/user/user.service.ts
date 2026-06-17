@@ -5,8 +5,8 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { SECRET } from '../config';
 import { CreateUserDto, LoginUserDto, UpdateUserDto } from './dto';
-import { User, UserDTO } from './user.entity';
-import { IUserRO } from './user.interface';
+import { User } from './user.entity';
+import { IPublicUserData, IPublicUsersRO, IUserRO } from './user.interface';
 import { UserRepository } from './user.repository';
 
 @Injectable()
@@ -115,7 +115,7 @@ export class UserService {
     return { user: userRO };
   }
 
-  async findAllWithPagination(query: Record<string, string>): Promise<{ users: UserDTO[]; usersCount: number }> {
+  async findAllWithPagination(query: Record<string, string>): Promise<IPublicUsersRO> {
     const qb = this.userRepository.createQueryBuilder('u');
 
     qb.orderBy({ id: 'DESC' });
@@ -130,6 +130,13 @@ export class UserService {
     }
 
     const users = await qb.getResult();
-    return { users: users.map((user) => user.toJSON()), usersCount: usersCount.count };
+    return { users: users.map((user) => this.buildPublicUserData(user)), usersCount: usersCount.count };
+  }
+
+  private buildPublicUserData(user: User): IPublicUserData {
+    return {
+      username: user.username,
+      image: user.image || 'https://api.dicebear.com/9.x/initials/svg?seed=U',
+    };
   }
 }

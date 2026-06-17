@@ -71,7 +71,9 @@ export class Article {
     const o = wrap<Article>(this).toObject() as unknown as ArticleDTO;
     o.favorited = user && user.favorites.isInitialized() ? user.favorites.contains(this) : false;
     o.author = this.author.toJSON(user);
-    o.coAuthors = this.coAuthors.isInitialized() ? this.coAuthors.getItems().map((coAuthor) => coAuthor.email) : [];
+    o.coAuthors = this.coAuthors.isInitialized()
+      ? this.coAuthors.getItems().map((coAuthor) => coAuthor.username)
+      : [];
 
     return o;
   }

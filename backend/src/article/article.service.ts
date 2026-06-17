@@ -203,22 +203,22 @@ export class ArticleService {
     throw new ForbiddenException({ errors: { article: ['You are not allowed to edit this article'] } });
   }
 
-  private async resolveCoAuthors(emails: string[] | undefined, author: User): Promise<User[]> {
-    const coAuthorEmails = [
-      ...new Set((emails ?? []).map((email) => email.trim().toLowerCase()).filter(Boolean)),
-    ].filter((email) => email !== author.email.toLowerCase());
+  private async resolveCoAuthors(usernames: string[] | undefined, author: User): Promise<User[]> {
+    const coAuthorUsernames = [...new Set((usernames ?? []).map((username) => username.trim()).filter(Boolean))].filter(
+      (username) => username.toLowerCase() !== author.username.toLowerCase(),
+    );
 
-    if (coAuthorEmails.length === 0) {
+    if (coAuthorUsernames.length === 0) {
       return [];
     }
 
-    const coAuthors = await this.userRepository.find({ email: { $in: coAuthorEmails } });
-    const foundEmails = new Set(coAuthors.map((coAuthor) => coAuthor.email.toLowerCase()));
-    const missingEmails = coAuthorEmails.filter((email) => !foundEmails.has(email));
+    const coAuthors = await this.userRepository.find({ username: { $in: coAuthorUsernames } });
+    const foundUsernames = new Set(coAuthors.map((coAuthor) => coAuthor.username.toLowerCase()));
+    const missingUsernames = coAuthorUsernames.filter((username) => !foundUsernames.has(username.toLowerCase()));
 
-    if (missingEmails.length > 0) {
+    if (missingUsernames.length > 0) {
       throw new BadRequestException({
-        errors: { coAuthors: missingEmails.map((email) => `Unknown user email: ${email}`) },
+        errors: { coAuthors: missingUsernames.map((username) => `Unknown username: ${username}`) },
       });
     }
 
