@@ -1,12 +1,7 @@
 import { EntityManager, QueryOrder, wrap } from '@mikro-orm/core';
 import { EntityRepository } from '@mikro-orm/mysql';
 import { InjectRepository } from '@mikro-orm/nestjs';
-import {
-  BadRequestException,
-  ConflictException,
-  ForbiddenException,
-  Injectable,
-} from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 
 import { User } from '../user/user.entity';
 import { Article } from './article.entity';
@@ -73,10 +68,7 @@ export class ArticleService {
     }
 
     const ids = (await qb.getResult()).map((a) => a.id);
-    const articles = await this.articleRepository.find(
-      { id: { $in: ids } },
-      { populate: ARTICLE_RELATIONS },
-    );
+    const articles = await this.articleRepository.find({ id: { $in: ids } }, { populate: ARTICLE_RELATIONS });
 
     return { articles: articles.map((a) => a.toJSON(user!)), articlesCount };
   }
@@ -107,10 +99,7 @@ export class ArticleService {
   }
 
   async addComment(userId: number, slug: string, dto: CreateCommentDto) {
-    const article = await this.articleRepository.findOneOrFail(
-      { slug },
-      { populate: ARTICLE_RELATIONS },
-    );
+    const article = await this.articleRepository.findOneOrFail({ slug }, { populate: ARTICLE_RELATIONS });
     const author = await this.userRepository.findOneOrFail(userId);
     const comment = new Comment(author, article, dto.body);
     await this.em.persistAndFlush(comment);
@@ -119,10 +108,7 @@ export class ArticleService {
   }
 
   async deleteComment(userId: number, slug: string, id: number): Promise<IArticleRO> {
-    const article = await this.articleRepository.findOneOrFail(
-      { slug },
-      { populate: ARTICLE_RELATIONS },
-    );
+    const article = await this.articleRepository.findOneOrFail({ slug }, { populate: ARTICLE_RELATIONS });
     const user = await this.userRepository.findOneOrFail(userId);
     const comment = this.commentRepository.getReference(id);
 
@@ -135,10 +121,7 @@ export class ArticleService {
   }
 
   async favorite(id: number, slug: string): Promise<IArticleRO> {
-    const article = await this.articleRepository.findOneOrFail(
-      { slug },
-      { populate: ARTICLE_RELATIONS },
-    );
+    const article = await this.articleRepository.findOneOrFail({ slug }, { populate: ARTICLE_RELATIONS });
     const user = await this.userRepository.findOneOrFail(id, { populate: ['favorites', 'followers'] });
 
     if (!user.favorites.contains(article)) {
@@ -151,10 +134,7 @@ export class ArticleService {
   }
 
   async unFavorite(id: number, slug: string): Promise<IArticleRO> {
-    const article = await this.articleRepository.findOneOrFail(
-      { slug },
-      { populate: ARTICLE_RELATIONS },
-    );
+    const article = await this.articleRepository.findOneOrFail({ slug }, { populate: ARTICLE_RELATIONS });
     const user = await this.userRepository.findOneOrFail(id, { populate: ['followers', 'favorites'] });
 
     if (user.favorites.contains(article)) {
@@ -190,16 +170,18 @@ export class ArticleService {
       { id: userId },
       { populate: ['followers', 'favorites', 'articles'] },
     );
-    const article = await this.articleRepository.findOneOrFail(
-      { slug },
-      { populate: ARTICLE_RELATIONS },
-    );
+    const article = await this.articleRepository.findOneOrFail({ slug }, { populate: ARTICLE_RELATIONS });
 
     this.ensureCanEditArticle(userId, article);
     this.ensureUserHoldsValidLock(userId, article);
 
-    const { coAuthors: _coAuthors, ...updateData } = articleData;
-    wrap(article).assign(updateData as any);
+    const updateData: Partial<Article> = {
+      title: articleData.title,
+      description: articleData.description,
+      body: articleData.body,
+      tagList: articleData.tagList,
+    };
+    wrap(article).assign(updateData);
 
     if (articleData.coAuthors !== undefined) {
       article.coAuthors.set(await this.resolveCoAuthors(articleData.coAuthors, article.author.id));
@@ -212,10 +194,7 @@ export class ArticleService {
 
   async lock(userId: number, slug: string): Promise<IArticleRO> {
     const user = await this.userRepository.findOneOrFail(userId, { populate: ['followers', 'favorites'] });
-    const article = await this.articleRepository.findOneOrFail(
-      { slug },
-      { populate: ARTICLE_RELATIONS },
-    );
+    const article = await this.articleRepository.findOneOrFail({ slug }, { populate: ARTICLE_RELATIONS });
 
     this.ensureCanEditArticle(userId, article);
 
@@ -235,10 +214,7 @@ export class ArticleService {
 
   async unlock(userId: number, slug: string): Promise<IArticleRO> {
     const user = await this.userRepository.findOneOrFail(userId, { populate: ['followers', 'favorites'] });
-    const article = await this.articleRepository.findOneOrFail(
-      { slug },
-      { populate: ARTICLE_RELATIONS },
-    );
+    const article = await this.articleRepository.findOneOrFail({ slug }, { populate: ARTICLE_RELATIONS });
 
     this.ensureCanEditArticle(userId, article);
 
@@ -254,10 +230,7 @@ export class ArticleService {
 
   async pingLock(userId: number, slug: string): Promise<IArticleRO> {
     const user = await this.userRepository.findOneOrFail(userId, { populate: ['followers', 'favorites'] });
-    const article = await this.articleRepository.findOneOrFail(
-      { slug },
-      { populate: ARTICLE_RELATIONS },
-    );
+    const article = await this.articleRepository.findOneOrFail({ slug }, { populate: ARTICLE_RELATIONS });
 
     this.ensureCanEditArticle(userId, article);
 
@@ -275,8 +248,14 @@ export class ArticleService {
     return { article: article.toJSON(user) };
   }
 
-  async delete(slug: string) {
-    return this.articleRepository.nativeDelete({ slug });
+  async delete(userId: number, slug: string) {
+    const article = await this.articleRepository.findOneOrFail({ slug }, { populate: ARTICLE_RELATIONS });
+
+    this.ensureCanEditArticle(userId, article);
+
+    await this.em.removeAndFlush(article);
+
+    return 1;
   }
 
   private async resolveCoAuthors(coAuthors: string[] | undefined, authorId: number): Promise<User[]> {

@@ -87,8 +87,8 @@ export class ArticleController {
   @ApiResponse({ status: 201, description: 'The article has been successfully deleted.' })
   @ApiResponse({ status: 403, description: 'Forbidden.' })
   @Delete(':slug')
-  async delete(@Param() params: Record<string, string>) {
-    return this.articleService.delete(params.slug);
+  async delete(@User('id') userId: number, @Param() params: Record<string, string>) {
+    return this.articleService.delete(+userId, params.slug);
   }
 
   @ApiOperation({ summary: 'Create comment' })

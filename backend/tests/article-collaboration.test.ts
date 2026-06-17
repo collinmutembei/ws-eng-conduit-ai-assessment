@@ -9,6 +9,17 @@ import { ArticleService } from '../src/article/article.service';
 import { User } from '../src/user/user.entity';
 import { UserService } from '../src/user/user.service';
 
+function resolveCoAuthorsForTest(service: ArticleService) {
+  return (service as unknown as Record<string, unknown>).resolveCoAuthors as (
+    coAuthors: string[] | undefined,
+    authorId: number,
+  ) => Promise<User[]>;
+}
+
+function isLockExpiredForTest(service: ArticleService) {
+  return (service as unknown as Record<string, unknown>).isLockExpired as (article: Article) => boolean;
+}
+
 function createUser(id: number, username: string, email: string) {
   const user = new User(username, email, 'password');
   user.id = id;
@@ -20,22 +31,25 @@ function createArticle(author: User) {
   const coAuthorItems: User[] = [];
 
   article.id = 100;
-  (article as any).__helper = {
-    assign: (data: Record<string, unknown>) => Object.assign(article, data),
-  };
+  Reflect.defineProperty(article, '__helper', {
+    value: {
+      assign: (data: Partial<Article>) => Object.assign(article, data),
+    },
+    configurable: true,
+  });
   article.coAuthors = {
     getItems: () => coAuthorItems,
     set: (users: User[]) => {
       coAuthorItems.splice(0, coAuthorItems.length, ...users);
     },
-  } as any;
-  article.toJSON = () =>
+  } as unknown as Article['coAuthors'];
+  article.toJSON = ((() =>
     ({
       slug: article.slug,
       title: article.title,
       lockedBy: article.lockedBy?.id,
       coAuthors: article.coAuthors.getItems().map((user) => user.username),
-    }) as any;
+    })) as unknown) as Article['toJSON'];
 
   return article;
 }
@@ -65,7 +79,13 @@ function createArticleService(options?: {
   };
 
   const articleRepository = {
-    findOneOrFail: async () => options?.article,
+    findOneOrFail: async () => {
+      if (!options?.article) {
+        throw new Error('Missing article fixture');
+      }
+
+      return options.article;
+    },
     nativeDelete: async () => 1,
   };
 
@@ -92,10 +112,10 @@ function createArticleService(options?: {
   };
 
   const service = new ArticleService(
-    em as any,
-    articleRepository as any,
-    commentRepository as any,
-    userRepository as any,
+    em as unknown as ConstructorParameters<typeof ArticleService>[0],
+    articleRepository as unknown as ConstructorParameters<typeof ArticleService>[1],
+    commentRepository as unknown as ConstructorParameters<typeof ArticleService>[2],
+    userRepository as unknown as ConstructorParameters<typeof ArticleService>[3],
   );
 
   return {
@@ -113,12 +133,15 @@ test('resolveCoAuthors batches identifier lookup, excludes the author, and dedup
     foundUsers: [author, firstCoAuthor, secondCoAuthor],
   });
 
-  const coAuthors = await (service as any).resolveCoAuthors(
+  const coAuthors = await resolveCoAuthorsForTest(service)(
     [' writer-one ', 'writer-two@example.com', 'owner', 'writer-one'],
     author.id,
   );
 
-  assert.deepEqual(coAuthors.map((user: User) => user.id), [2, 3]);
+  assert.deepEqual(
+    coAuthors.map((user: User) => user.id),
+    [2, 3],
+  );
   assert.deepEqual(getLastFindQuery(), {
     $or: [
       { username: { $in: ['writer-one', 'writer-two@example.com', 'owner'] } },
@@ -135,7 +158,7 @@ test('resolveCoAuthors throws a validation error when an identifier cannot be re
   });
 
   await assert.rejects(
-    async () => (service as any).resolveCoAuthors(['writer-one', 'missing@example.com'], author.id),
+    async () => resolveCoAuthorsForTest(service)(['writer-one', 'missing@example.com'], author.id),
     (error: unknown) => {
       assert.ok(error instanceof BadRequestException);
       assert.deepEqual((error as BadRequestException).getResponse(), {
@@ -173,7 +196,10 @@ test('update allows a co-author with a valid lock to change article fields and c
   });
 
   assert.equal(article.title, 'Updated title');
-  assert.deepEqual(article.coAuthors.getItems().map((user) => user.id), [nextCoAuthor.id]);
+  assert.deepEqual(
+    article.coAuthors.getItems().map((user) => user.id),
+    [nextCoAuthor.id],
+  );
   assert.equal(getFlushCount(), 1);
 });
 
@@ -292,6 +318,42 @@ test('unlock clears lock state for a collaborating user', async () => {
   assert.equal(getFlushCount(), 1);
 });
 
+test('delete allows a co-author to remove an article', async () => {
+  const author = createUser(1, 'owner', 'owner@example.com');
+  const editor = createUser(2, 'editor', 'editor@example.com');
+  const article = createArticle(author);
+  setCoAuthors(article, [editor]);
+
+  const { service, getFlushCount } = createArticleService({
+    currentUsersById: new Map([
+      [author.id, author],
+      [editor.id, editor],
+    ]),
+    article,
+  });
+
+  const result = await service.delete(editor.id, article.slug);
+
+  assert.equal(result, 1);
+  assert.equal(getFlushCount(), 1);
+});
+
+test('delete rejects a user who is neither the author nor a co-author', async () => {
+  const author = createUser(1, 'owner', 'owner@example.com');
+  const outsider = createUser(2, 'outsider', 'outsider@example.com');
+  const article = createArticle(author);
+
+  const { service } = createArticleService({
+    currentUsersById: new Map([
+      [author.id, author],
+      [outsider.id, outsider],
+    ]),
+    article,
+  });
+
+  await assert.rejects(() => service.delete(outsider.id, article.slug), ForbiddenException);
+});
+
 test('isLockExpired falls back to lockedAt when no heartbeat exists yet', () => {
   const author = createUser(1, 'owner', 'owner@example.com');
   const editor = createUser(2, 'editor', 'editor@example.com');
@@ -309,7 +371,7 @@ test('isLockExpired falls back to lockedAt when no heartbeat exists yet', () => 
     article,
   });
 
-  assert.equal((service as any).isLockExpired(article), false);
+  assert.equal(isLockExpiredForTest(service)(article), false);
 });
 
 test('findAllForDropdown requests users in username order and returns serialized results', async () => {
@@ -324,7 +386,10 @@ test('findAllForDropdown requests users in username order and returns serialized
     },
   };
 
-  const service = new UserService(userRepository as any, {} as any);
+  const service = new UserService(
+    userRepository as unknown as ConstructorParameters<typeof UserService>[0],
+    {} as ConstructorParameters<typeof UserService>[1],
+  );
 
   const result = await service.findAllForDropdown();
 
