@@ -1,6 +1,6 @@
 import { Err, Ok, Result } from '@hqoss/monads';
 import axios, { AxiosError } from 'axios';
-import { array, object, string } from 'decoders';
+import { array, object, optional, string } from 'decoders';
 import settings from '../config/settings';
 import {
   Article,
@@ -18,6 +18,40 @@ import { Profile, profileDecoder } from '../types/profile';
 import { User, userDecoder, UserForRegistration, UserSettings } from '../types/user';
 
 axios.defaults.baseURL = settings.baseApiUrl;
+
+const apiErrorDecoder = object({
+  errors: optional(object({})),
+  message: optional(string),
+});
+
+function toGenericErrors(error: unknown): GenericErrors {
+  const axiosError = error as AxiosError<unknown>;
+  const payload = axiosError.response?.data;
+
+  if (!payload || typeof payload !== 'object') {
+    return { error: ['Unexpected error'] };
+  }
+
+  const decoded = apiErrorDecoder.verify(payload);
+  const fieldErrors = decoded.errors;
+
+  if (fieldErrors && typeof fieldErrors === 'object') {
+    const normalizedEntries = Object.entries(fieldErrors as Record<string, unknown>).map(([field, value]) => [
+      field,
+      Array.isArray(value) ? value.map((entry) => String(entry)) : [String(value)],
+    ]);
+
+    if (normalizedEntries.length > 0) {
+      return Object.fromEntries(normalizedEntries);
+    }
+  }
+
+  if (decoded.message) {
+    return { error: [decoded.message] };
+  }
+
+  return { error: ['Unexpected error'] };
+}
 
 export async function getArticles(filters: ArticlesFilters = {}): Promise<MultipleArticles> {
   const finalFilters: ArticlesFilters = {
@@ -37,8 +71,7 @@ export async function login(email: string, password: string): Promise<Result<Use
     const { data } = await axios.post('users/login', { user: { email, password } });
     return Ok(object({ user: userDecoder }).verify(data).user);
   } catch (error) {
-    const axiosError = error as AxiosError;
-    return Err(object({ errors: genericErrorsDecoder }).verify(axiosError.response?.data).errors);
+    return Err(toGenericErrors(error));
   }
 }
 
@@ -60,8 +93,7 @@ export async function updateSettings(user: UserSettings): Promise<Result<User, G
     const { data } = await axios.put('user', user);
     return Ok(object({ user: userDecoder }).verify(data).user);
   } catch (error) {
-    const axiosError = error as AxiosError;
-    return Err(object({ errors: genericErrorsDecoder }).verify(axiosError.response?.data).errors);
+    return Err(toGenericErrors(error));
   }
 }
 
@@ -70,8 +102,7 @@ export async function signUp(user: UserForRegistration): Promise<Result<User, Ge
     const { data } = await axios.post('users', { user });
     return Ok(object({ user: userDecoder }).verify(data).user);
   } catch (error) {
-    const axiosError = error as AxiosError;
-    return Err(object({ errors: genericErrorsDecoder }).verify(axiosError.response?.data).errors);
+    return Err(toGenericErrors(error));
   }
 }
 
@@ -80,8 +111,7 @@ export async function createArticle(article: ArticleForEditor): Promise<Result<A
     const { data } = await axios.post('articles', { article });
     return Ok(object({ article: articleDecoder }).verify(data).article);
   } catch (error) {
-    const axiosError = error as AxiosError;
-    return Err(object({ errors: genericErrorsDecoder }).verify(axiosError.response?.data).errors);
+    return Err(toGenericErrors(error));
   }
 }
 
@@ -95,8 +125,7 @@ export async function updateArticle(slug: string, article: ArticleForEditor): Pr
     const { data } = await axios.put(`articles/${slug}`, { article });
     return Ok(object({ article: articleDecoder }).verify(data).article);
   } catch (error) {
-    const axiosError = error as AxiosError;
-    return Err(object({ errors: genericErrorsDecoder }).verify(axiosError.response?.data).errors);
+    return Err(toGenericErrors(error));
   }
 }
 
@@ -140,4 +169,36 @@ export async function createComment(slug: string, body: string): Promise<Comment
 
 export async function deleteArticle(slug: string): Promise<void> {
   await axios.delete(`articles/${slug}`);
+}
+
+export async function getAllUsers(): Promise<Profile[]> {
+  const { data } = await axios.get('users/all');
+  return object({ users: array(profileDecoder) }).verify(data).users;
+}
+
+export async function lockArticle(slug: string): Promise<Result<Article, GenericErrors>> {
+  try {
+    const { data } = await axios.post(`articles/${slug}/lock`);
+    return Ok(object({ article: articleDecoder }).verify(data).article);
+  } catch (error) {
+    return Err(toGenericErrors(error));
+  }
+}
+
+export async function releaseArticleLock(slug: string): Promise<Result<Article, GenericErrors>> {
+  try {
+    const { data } = await axios.delete(`articles/${slug}/lock`);
+    return Ok(object({ article: articleDecoder }).verify(data).article);
+  } catch (error) {
+    return Err(toGenericErrors(error));
+  }
+}
+
+export async function pingArticleLock(slug: string): Promise<Result<Article, GenericErrors>> {
+  try {
+    const { data } = await axios.post(`articles/${slug}/ping`);
+    return Ok(object({ article: articleDecoder }).verify(data).article);
+  } catch (error) {
+    return Err(toGenericErrors(error));
+  }
 }

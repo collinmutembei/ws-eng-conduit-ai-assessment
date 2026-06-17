@@ -1,5 +1,6 @@
-import { array, boolean, Decoder, number, object, string } from 'decoders';
+import { array, boolean, Decoder, nullable, number, object, string } from 'decoders';
 import { Profile, profileDecoder } from './profile';
+import { User } from './user';
 
 export interface Article {
   slug: string;
@@ -12,6 +13,10 @@ export interface Article {
   favorited: boolean;
   favoritesCount: number;
   author: Profile;
+  coAuthors: Profile[];
+  lockedBy: Profile | null;
+  lockedAt: string | null;
+  lastPingAt: string | null;
 }
 
 export const articleDecoder: Decoder<Article> = object({
@@ -25,6 +30,10 @@ export const articleDecoder: Decoder<Article> = object({
   favorited: boolean,
   favoritesCount: number,
   author: profileDecoder,
+  coAuthors: array(profileDecoder),
+  lockedBy: nullable(profileDecoder),
+  lockedAt: nullable(string),
+  lastPingAt: nullable(string),
 });
 
 export interface MultipleArticles {
@@ -42,6 +51,7 @@ export interface ArticleForEditor {
   description: string;
   body: string;
   tagList: string[];
+  coAuthors?: string[];
 }
 
 export interface ArticlesFilters {
@@ -55,4 +65,12 @@ export interface ArticlesFilters {
 export interface FeedFilters {
   limit?: number;
   offset?: number;
+}
+
+export function canEditArticle(article: Article, user: Pick<User, 'username'> | null): boolean {
+  if (!user) {
+    return false;
+  }
+
+  return article.author.username === user.username || article.coAuthors.some((coAuthor) => coAuthor.username === user.username);
 }
