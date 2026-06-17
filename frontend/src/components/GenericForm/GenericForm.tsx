@@ -1,4 +1,4 @@
-import { FC, Fragment } from 'react';
+import { FC, Fragment, ReactNode } from 'react';
 import { FormGroup, ListFormGroup, TextAreaFormGroup } from '../FormGroup/FormGroup';
 import { GenericFormField } from '../../types/genericFormField';
 import { GenericErrors } from '../../types/error';
@@ -14,6 +14,7 @@ export interface GenericFormProps {
   onSubmit: (ev: React.FormEvent) => void;
   onAddItemToList?: (name: string) => void;
   onRemoveListItem?: (name: string, index: number) => void;
+  children?: ReactNode;
 }
 
 export const GenericForm: FC<GenericFormProps> = ({
@@ -26,6 +27,7 @@ export const GenericForm: FC<GenericFormProps> = ({
   onSubmit,
   onAddItemToList,
   onRemoveListItem,
+  children,
 }) => (
   <Fragment>
     <Errors errors={errors} />
@@ -69,6 +71,7 @@ export const GenericForm: FC<GenericFormProps> = ({
             />
           ),
         )}
+        {children}
         <button className='btn btn-lg btn-primary pull-xs-right'>{submitButtonText}</button>
       </fieldset>
     </form>

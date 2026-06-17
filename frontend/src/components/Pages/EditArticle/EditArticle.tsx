@@ -23,7 +23,7 @@ async function _loadArticle(slug: string) {
     const { title, description, body, tagList, coAuthors, author } = await getArticle(slug);
     const currentUser = store.getState().app.user;
 
-    if (author.username !== currentUser?.username && !coAuthors.includes(currentUser?.email ?? '')) {
+    if (author.username !== currentUser?.username && !coAuthors.includes(currentUser?.username ?? '')) {
       location.hash = '#/';
       return;
     }

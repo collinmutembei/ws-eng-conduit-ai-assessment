@@ -33,17 +33,12 @@ const slice = createSlice({
         return;
       }
 
-      if (name === 'coAuthors') {
-        state.article.coAuthors = value
-          .split(',')
-          .map((email) => email.trim())
-          .filter(Boolean);
-        return;
-      }
-
-      if (name !== 'tagList') {
+      if (name !== 'tagList' && name !== 'coAuthors') {
         state.article[name] = value;
       }
+    },
+    setCoAuthors: (state, { payload: coAuthors }: PayloadAction<string[]>) => {
+      state.article.coAuthors = coAuthors;
     },
     updateErrors: (state, { payload: errors }: PayloadAction<GenericErrors>) => {
       state.errors = errors;
@@ -68,7 +63,7 @@ const slice = createSlice({
   },
 });
 
-export const { initializeEditor, updateField, startSubmitting, addTag, removeTag, updateErrors, loadArticle } =
+export const { initializeEditor, updateField, setCoAuthors, startSubmitting, addTag, removeTag, updateErrors, loadArticle } =
   slice.actions;
 
 export default slice.reducer;

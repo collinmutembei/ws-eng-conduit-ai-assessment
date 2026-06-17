@@ -15,7 +15,14 @@ import { Comment, commentDecoder } from '../types/comment';
 import { GenericErrors, genericErrorsDecoder } from '../types/error';
 import { objectToQueryString } from '../types/object';
 import { Profile, profileDecoder } from '../types/profile';
-import { User, userDecoder, UserForRegistration, UserSettings } from '../types/user';
+import {
+  PublicUsersResponse,
+  publicUsersResponseDecoder,
+  User,
+  userDecoder,
+  UserForRegistration,
+  UserSettings,
+} from '../types/user';
 
 axios.defaults.baseURL = settings.baseApiUrl;
 
@@ -45,6 +52,11 @@ export async function login(email: string, password: string): Promise<Result<Use
 export async function getUser(): Promise<User> {
   const { data } = await axios.get('user');
   return object({ user: userDecoder }).verify(data).user;
+}
+
+export async function getPublicUsers(): Promise<PublicUsersResponse> {
+  const { data } = await axios.get('users');
+  return publicUsersResponseDecoder.verify(data);
 }
 
 export async function favoriteArticle(slug: string): Promise<Article> {

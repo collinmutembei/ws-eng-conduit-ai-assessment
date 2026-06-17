@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Decoder, nullable, object, string } from 'decoders';
+import { array, Decoder, nullable, number, object, string } from 'decoders';
 import { loadUser } from '../components/App/App.slice';
 import { store } from '../state/store';
 
@@ -13,6 +13,26 @@ export interface User extends PublicUser {
   email: string;
   token: string;
 }
+
+export interface PublicUserOption {
+  username: string;
+  image: string | null;
+}
+
+export const publicUserOptionDecoder: Decoder<PublicUserOption> = object({
+  username: string,
+  image: nullable(string),
+});
+
+export interface PublicUsersResponse {
+  users: PublicUserOption[];
+  usersCount: number;
+}
+
+export const publicUsersResponseDecoder: Decoder<PublicUsersResponse> = object({
+  users: array(publicUserOptionDecoder),
+  usersCount: number,
+});
 
 export const userDecoder: Decoder<User> = object({
   email: string,

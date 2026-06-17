@@ -1,22 +1,45 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { getPublicUsers } from '../../services/conduit';
 import { store } from '../../state/store';
 import { useStore } from '../../state/storeHooks';
 import { buildGenericFormField } from '../../types/genericFormField';
+import { PublicUserOption } from '../../types/user';
 import { ContainerPage } from '../ContainerPage/ContainerPage';
 import { GenericForm } from '../GenericForm/GenericForm';
-import { addTag, EditorState, removeTag, updateField } from './ArticleEditor.slice';
+import { addTag, EditorState, removeTag, setCoAuthors, updateField } from './ArticleEditor.slice';
 
 export function ArticleEditor({ onSubmit }: { onSubmit: (ev: React.FormEvent) => void }) {
   const { article, submitting, tag, errors } = useStore(({ editor }) => editor);
+  const currentUser = useStore(({ app }) => app.user);
+  const [availableUsers, setAvailableUsers] = useState<PublicUserOption[]>([]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    void (async () => {
+      const { users } = await getPublicUsers();
+
+      if (isMounted) {
+        setAvailableUsers(users);
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const selectableCoAuthors = useMemo(
+    () => availableUsers.filter((user) => user.username !== currentUser?.username),
+    [availableUsers, currentUser?.username],
+  );
 
   return (
     <div className='editor-page'>
       <ContainerPage>
         <div className='col-md-10 offset-md-1 col-xs-12'>
           <GenericForm
-            formObject={
-              { ...article, coAuthors: article.coAuthors.join(', '), tag } as unknown as Record<string, string | null>
-            }
+            formObject={{ ...article, tag } as unknown as Record<string, string | null>}
             disabled={submitting}
             errors={errors}
             onChange={onUpdateField}
@@ -35,11 +58,6 @@ export function ArticleEditor({ onSubmit }: { onSubmit: (ev: React.FormEvent) =>
                 lg: false,
               }),
               buildGenericFormField({
-                name: 'coAuthors',
-                placeholder: 'Enter co-author emails separated by commas',
-                lg: false,
-              }),
-              buildGenericFormField({
                 name: 'tag',
                 placeholder: 'Enter the tag name and press enter',
                 listName: 'tagList',
@@ -47,7 +65,29 @@ export function ArticleEditor({ onSubmit }: { onSubmit: (ev: React.FormEvent) =>
                 lg: false,
               }),
             ]}
-          />
+          >
+            <fieldset className='form-group'>
+              <label htmlFor='coAuthors' className='mb-1'>
+                Co-authors
+              </label>
+              <select
+                id='coAuthors'
+                className='form-control'
+                multiple
+                disabled={submitting}
+                value={article.coAuthors}
+                onChange={onUpdateCoAuthors}
+                size={Math.max(4, Math.min(8, selectableCoAuthors.length || 4))}
+              >
+                {selectableCoAuthors.map((user) => (
+                  <option key={user.username} value={user.username}>
+                    {user.username}
+                  </option>
+                ))}
+              </select>
+              <small className='text-muted'>Hold Ctrl/Cmd to select multiple co-authors.</small>
+            </fieldset>
+          </GenericForm>
         </div>
       </ContainerPage>
     </div>
@@ -56,6 +96,10 @@ export function ArticleEditor({ onSubmit }: { onSubmit: (ev: React.FormEvent) =>
 
 function onUpdateField(name: string, value: string) {
   store.dispatch(updateField({ name: name as keyof EditorState['article'], value }));
+}
+
+function onUpdateCoAuthors(ev: React.ChangeEvent<HTMLSelectElement>) {
+  store.dispatch(setCoAuthors(Array.from(ev.target.selectedOptions, (option) => option.value)));
 }
 
 function onAddTag() {
